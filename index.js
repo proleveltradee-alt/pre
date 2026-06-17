@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8080;
 const app = express();
 
 app.get('/', (req, res) => {
-    res.status(200).send('Bot Status: Active (Dual Schedule)');
+    res.status(200).send('Bot Status: Active (Dual Schedule, Array Support)');
 });
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -108,7 +108,6 @@ async function getStats(method, start, end) {
     }
 }
 
-
 // === ৪. শিডিউল টাস্ক ১: দুপুর ১২:০০ টা (Daily Report) ===
 cron.schedule('0 12 * * *', async () => {
     console.log('⏰ Running Task 1: Daily full report (12:00 PM)...');
@@ -125,31 +124,39 @@ cron.schedule('0 12 * * *', async () => {
 
         for (const doc of managersSnap.docs) {
             const manager = doc.data();
-            const method = manager.payment;
-            const groupId = manager.groupId; 
+            
+            // Array চেক করা হচ্ছে, যদি পুরনো ডেটা স্ট্রিং থাকে তবে সেটাকে অ্যারে বানিয়ে নেবে
+            const payments = Array.isArray(manager.payment) ? manager.payment : [manager.payment].filter(Boolean);
+            const groupIds = Array.isArray(manager.groupId) ? manager.groupId : [manager.groupId].filter(Boolean);
 
-            if (method && groupId) {
-                const currentBalance = Number(manager.balance || 0);
-                const stats = await getStats(method, start, end);
+            const currentBalance = Number(manager.balance || 0);
+            const balanceFullBDT = currentBalance;
+            const balanceFullUSDT = balanceFullBDT / USDT_RATE;
 
-                const balanceFullBDT = currentBalance;
-                const balanceFullUSDT = balanceFullBDT / USDT_RATE;
-                
-                const weeklyDepUSDT = stats.weeklyDeposit / USDT_RATE;
-                const weeklyWdUSDT = stats.weeklyWithdraw / USDT_RATE;
+            // প্রতিটি পেমেন্ট মেথড এবং সংশ্লিষ্ট গ্রুপ আইডির জন্য লুপ
+            for (let i = 0; i < payments.length; i++) {
+                const method = payments[i];
+                const groupId = groupIds[i]; 
 
-                let msg = `t+→$ (Daily Report)\n`;
-                msg += `<b>${method}</b>\n`;
-                msg += `${formatDate(start)} - ${formatDate(end)} (Last 7 Days)\n`;
-                
-                msg += `Payment (7d) = ${formatMoney(stats.weeklyDeposit)} BDT (${formatMoney(weeklyDepUSDT)} USDT)\n`;
-                msg += `Withdrawal (7d) = ${formatMoney(stats.weeklyWithdraw)} BDT (${formatMoney(weeklyWdUSDT)} USDT)\n`;
-                
-                // এখানে আগে থেকেই মাইনাস ছিল
-                msg += `Balance (full) = -${formatMoney(balanceFullBDT)} BDT (-${formatMoney(balanceFullUSDT)} USDT)\n`;
+                if (method && groupId) {
+                    const stats = await getStats(method, start, end);
+                    
+                    const weeklyDepUSDT = stats.weeklyDeposit / USDT_RATE;
+                    const weeklyWdUSDT = stats.weeklyWithdraw / USDT_RATE;
 
-                await sendTelegramMessage(groupId, msg);
-                console.log(`✅ Task 1: Report sent to ${method}`);
+                    let msg = `t+→$ (Daily Report)\n`;
+                    msg += `<b>${method}</b>\n`;
+                    msg += `${formatDate(start)} - ${formatDate(end)} (Last 7 Days)\n`;
+                    
+                    msg += `Payment (7d) = ${formatMoney(stats.weeklyDeposit)} BDT (${formatMoney(weeklyDepUSDT)} USDT)\n`;
+                    msg += `Withdrawal (7d) = ${formatMoney(stats.weeklyWithdraw)} BDT (${formatMoney(weeklyWdUSDT)} USDT)\n`;
+                    
+                    // এখানে আগে থেকেই মাইনাস ছিল
+                    msg += `Balance (full) = -${formatMoney(balanceFullBDT)} BDT (-${formatMoney(balanceFullUSDT)} USDT)\n`;
+
+                    await sendTelegramMessage(groupId, msg);
+                    console.log(`✅ Task 1: Report sent to ${method} group (${groupId})`);
+                }
             }
         }
     } catch (error) {
@@ -160,7 +167,6 @@ cron.schedule('0 12 * * *', async () => {
     timezone: "Asia/Dhaka" 
 });
 
-
 // === ৫. শিডিউল টাস্ক ২: রাত ৮:০০ টা (Balance Report) ===
 cron.schedule('0 20 * * *', async () => {
     console.log('⏰ Running Task 2: Balance check (8:00 PM)...');
@@ -170,23 +176,30 @@ cron.schedule('0 20 * * *', async () => {
 
         for (const doc of managersSnap.docs) {
             const manager = doc.data();
-            const method = manager.payment;
-            const groupId = manager.groupId; 
 
-            if (method && groupId) {
-                const currentBalance = Number(manager.balance || 0);
+            // Array সাপোর্ট
+            const payments = Array.isArray(manager.payment) ? manager.payment : [manager.payment].filter(Boolean);
+            const groupIds = Array.isArray(manager.groupId) ? manager.groupId : [manager.groupId].filter(Boolean);
+            
+            const currentBalance = Number(manager.balance || 0);
+            const balanceFullBDT = currentBalance;
+            const balanceFullUSDT = balanceFullBDT / USDT_RATE;
 
-                const balanceFullBDT = currentBalance;
-                const balanceFullUSDT = balanceFullBDT / USDT_RATE;
-                
-                let msg = `t+→$\n`;
-                msg += `${method}\n`; 
-                
-                // [CHANGED] এখানে মাইনাস (-) চিহ্ন যোগ করা হয়েছে
-                msg += `Balance (full) = -${formatMoney(balanceFullBDT)} BDT (-${formatMoney(balanceFullUSDT)} USDT)`;
+            // প্রতিটি পেমেন্ট মেথড এবং সংশ্লিষ্ট গ্রুপ আইডির জন্য লুপ
+            for (let i = 0; i < payments.length; i++) {
+                const method = payments[i];
+                const groupId = groupIds[i]; 
 
-                await sendTelegramMessage(groupId, msg);
-                console.log(`✅ Task 2: Balance report sent to ${method}`);
+                if (method && groupId) {
+                    let msg = `t+→$\n`;
+                    msg += `${method}\n`; 
+                    
+                    // এখানে মাইনাস (-) চিহ্ন যোগ করা হয়েছে
+                    msg += `Balance (full) = -${formatMoney(balanceFullBDT)} BDT (-${formatMoney(balanceFullUSDT)} USDT)`;
+
+                    await sendTelegramMessage(groupId, msg);
+                    console.log(`✅ Task 2: Balance report sent to ${method} group (${groupId})`);
+                }
             }
         }
     } catch (error) {
